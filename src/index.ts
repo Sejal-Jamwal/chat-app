@@ -3,21 +3,47 @@ import { WebSocketServer , WebSocket } from "ws";
 // creates a Websocket server that listens on port 8080
 const wss = new WebSocketServer({ port: 8080 });
 
-// jitne bhi clients connect krre hain, unke socket connections ka array
-let sockets : WebSocket[] = [];
+interface RoomWebSocket extends WebSocket {
+    roomId: string;
+}
 
-wss.on("connection", (socket) => {
+let allSockets : Map<String, RoomWebSocket[]> = new Map();
+
+wss.on("connection", (socket : RoomWebSocket) => {
 
      console.log("connected to the websocket server");
-     sockets.push(socket);
+     
+     socket.on("message", (message) => {
+        // since websocket servers can only accept strings and binary as message body.
+        // @ts-ignore
+        const jsonMessage = JSON.parse(message); 
+        
+        if(jsonMessage.type === "join"){
+             socket.roomId = jsonMessage.payload.roomID;
+             console.log("The room id is: " + socket.roomId);
 
-     socket.on("message" , (message) => {
+             if(!allSockets.has(socket.roomId)){
+                 allSockets.set(socket.roomId, [socket]);
+             }
+             else{
+                allSockets.get(socket.roomId)?.push(socket);
+             }   
+        }
         
-        //broadcasts the message sent by one client to all the clients connected to the Websocket server
-        sockets.forEach( s => {
-            s.send("Message sent from the server : " + message.toString());
-        })
-        
-     });
+        if(jsonMessage.type === "chat"){
+
+            if (!socket.roomId) {
+                console.log("Socket has no roomId, user hasn't joined a room yet");
+                return;
+            }
+              let socketsArray = allSockets.get(socket.roomId);
+              console.log("allSockets Map " + allSockets);
+              console.log("socketsArray " + socketsArray);
+              socketsArray?.forEach( s => {
+                  s.send(jsonMessage.payload.message);
+              })
+        }
+          
+     })
 
 });
